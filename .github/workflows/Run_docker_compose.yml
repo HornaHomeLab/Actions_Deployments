@@ -162,8 +162,11 @@ jobs:
 
           while ($EndTime -gt $(Get-Date)) {
               $DockerStatus = $(docker compose ps --format json) | ConvertFrom-Json
-              $NotHealthy = $DockerStatus | Where-Object {$_.Health -ne "healthy" -and $_.State -eq "running" }
+
+              $Healthy = $DockerStatus | Where-Object {$_.Health -eq "healthy" }
+              $NotHealthy = $DockerStatus | Where-Object {$_.Health -ne "healthy" }
               $Unhealthy = $DockerStatus | Where-Object {$_.Health -eq "unhealthy"}
+              $ContainersWithoutHealthCheck = $DockerStatus | Where-Object {$_.Health -eq ""}
               
               if ($NotHealthy.Count -eq 0 ){
                   Write-Host "All containers are healthy"
@@ -176,7 +179,7 @@ jobs:
                   exit 1
               }
 
-              if (($DockerStatus | Where-Object {$_.Health -eq $null}).Count -eq $DockerStatus.Count){
+              if (($ContainersWithoutHealthCheck.Count + $Healthy.Count) -eq $DockerStatus.Count){
                 Write-Host "No health checks configured"
                 exit 0
               }
