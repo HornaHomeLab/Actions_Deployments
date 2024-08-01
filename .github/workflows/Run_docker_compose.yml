@@ -14,29 +14,29 @@ on:
         default: 120
 
 jobs:
-  Runner:
+  Check:
     uses: HornaHomeLab/Actions_Deployments/.github/workflows/Check_runner.yml@main
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
 
-  Details:
+  Get:
     uses: HornaHomeLab/Actions_Deployments/.github/workflows/Check_deployment.yml@main
     with:
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}
 
   Execution:
-    needs: [Runner, Details]
+    needs: [Check, Get]
     environment: ${{ inputs.environment }}
-    runs-on: ${{ needs.Runner.outputs.label }}
-    if: needs.Runner.outputs.environment_up == 'true'
+    runs-on: ${{ needs.Check.outputs.label }}
+    if: needs.Check.outputs.environment_up == 'true'
     env:
-      APP_NAME: ${{ needs.Details.outputs.app_name }}
-      ROOT_PATH: ${{ needs.Details.outputs.root_path }}
-      APP_PATH: ${{ needs.Details.outputs.app_path }}
-      APP_VERSION: ${{ needs.Details.outputs.app_version }}
-      REPO_URL: ${{ needs.Details.outputs.app_repo }}
+      APP_NAME: ${{ needs.Get.outputs.app_name }}
+      ROOT_PATH: ${{ needs.Get.outputs.root_path }}
+      APP_PATH: ${{ needs.Get.outputs.app_path }}
+      APP_VERSION: ${{ needs.Get.outputs.app_version }}
+      REPO_URL: ${{ needs.Get.outputs.app_repo }}
       HEALTHCHECK_TIMEOUT: ${{ inputs.healthcheck_timeout }}
     steps:
       - name: Deployment Summary
