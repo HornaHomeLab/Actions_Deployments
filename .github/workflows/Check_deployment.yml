@@ -1,0 +1,117 @@
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+    outputs:
+      app_name:
+        value: ${{ jobs.Details.outputs.app_name }}
+      app_version:
+        value: ${{ jobs.Details.outputs.app_version }}
+      app_path:
+        value: ${{ jobs.Details.outputs.app_path }}
+      app_repo:
+        value: ${{ jobs.Details.outputs.app_repo }}
+      root_path:
+        value: ${{ jobs.Details.outputs.root_path }}
+
+
+jobs:
+  Details:
+    environment: ${{ inputs.environment }}
+    runs-on: ${{ vars.DEFAULT_RUNNER }}
+    outputs:
+      app_name: ${{ steps.app-name.outputs.app_name }}
+      app_version: ${{ steps.app-version.outputs.app_version }}
+      app_path: ${{ steps.app-path.outputs.app_path }}
+      app_repo: ${{ steps.app-repo.outputs.app_repo }}
+      root_path: ${{ steps.root-path.outputs.root_path }}
+    env:
+      REPO: ${{ github.repository }}
+      APP_VERSION: ${{ inputs.version }}
+      APP_ROOT_DIR: ${{ vars.APP_ROOT_DIR }}
+    steps:
+      - name: Get App name
+        id: app-name
+        run: |
+          echo "app_name=$(
+            echo $REPO | awk -F'/' '{print $2}'
+          )" >> $GITHUB_OUTPUT
+
+      - name: Get App version
+        id: app-version
+        run: |
+          if [ "$APP_VERSION" != "latest" ]; then
+            tag_name=$(
+              curl -L -s --fail-with-body \
+                -X GET \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                --url https://api.github.com/repos/$REPO/releases/tags/$APP_VERSION \
+              | jq .tag_name)
+
+            if [ "$tag_name" != "null" ]; then
+              version="$APP_VERSION"
+            else
+              echo "Invalid version provided."
+              echo "Version $APP_VERSION does not exist"
+              exit 1
+            fi
+
+          else
+            latest_release_tag_name=$(
+              curl -L -s --fail-with-body \
+                -X GET \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                --url https://api.github.com/repos/$REPO/releases/latest \
+                | jq .tag_name | tr -d '"'
+              )
+            
+            if [ "$latest_release_tag_name" != "null" ]; then
+              version="$latest_release_tag_name"
+            else
+              echo "There is no Full Release available."
+              exit 1
+            fi
+            
+          fi
+
+          echo "app_version=$version" >> $GITHUB_OUTPUT
+
+      - name: Get root path
+        id: root-path
+        run: |
+          echo "root_path=$APP_ROOT_DIR" >> $GITHUB_OUTPUT
+
+      - name: Get App path
+        id: app-path
+        env:
+          APP_NAME: ${{ steps.app-name.outputs.app_name }}
+        run: |
+          echo "app_path=$(
+            echo "$APP_ROOT_DIR/$APP_NAME"
+          )" >> $GITHUB_OUTPUT
+
+      - name: Get App repository
+        id: app-repo
+        env:
+          SERVER_URL: ${{ github.server_url }}
+        run: |
+          echo "app_repo=$(
+            echo "$SERVER_URL/$REPO.git"
+          )" >> $GITHUB_OUTPUT
+
+      - name: Deployment details
+        run: |
+          echo "- Deployment environment: **${{ inputs.environment }}**" >> $GITHUB_STEP_SUMMARY
+          echo "- Application name: **${{ steps.app-name.outputs.app_name }}**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Version **${{ steps.app-version.outputs.app_version }}**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Repository ${{ steps.app-repo.outputs.app_repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "   - Installation path: ${{ steps.app-path.outputs.app_path }}" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,194 @@
+on:
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        required: true
+      version:
+        type: string
+        default: "latest"
+      healthcheck_timeout:
+        type: number
+        default: 120
+
+jobs:
+  Runner:
+    uses: HornaHomeLab/depl_dev/.github/workflows/Check_runner.yml@main
+    with:
+      environment: ${{ inputs.environment }}
+    secrets:
+      inherit
+
+  Details:
+    uses: HornaHomeLab/depl_dev/.github/workflows/Check_deployment.yml@main
+    with:
+      environment: ${{ inputs.environment }}
+      version: ${{ inputs.version }}
+
+  Execution:
+    needs: [Runner, Details]
+    environment: ${{ inputs.environment }}
+    runs-on: ${{ needs.Runner.outputs.label }}
+    if: needs.Runner.outputs.environment_up == 'true'
+    env:
+      APP_NAME: ${{ needs.Details.outputs.app_name }}
+      ROOT_PATH: ${{ needs.Details.outputs.root_path }}
+      APP_PATH: ${{ needs.Details.outputs.app_path }}
+      APP_VERSION: ${{ needs.Details.outputs.app_version }}
+      REPO_URL: ${{ needs.Details.outputs.app_repo }}
+      HEALTHCHECK_TIMEOUT: ${{ inputs.healthcheck_timeout }}
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "- Deployment to **${{ inputs.environment }}** environment" >> $GITHUB_STEP_SUMMARY
+          echo "   - Started by **${{ github.actor }}**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Executed on **${{ needs.Runner.outputs.label }}** environment" >> $GITHUB_STEP_SUMMARY
+          echo "   - HealthCheck timeout **$HEALTHCHECK_TIMEOUT** seconds" >> $GITHUB_STEP_SUMMARY
+          echo "- Application **$APP_NAME**" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create root directory
+        run: |
+          if [ ! -d "$ROOT_PATH" ]; then
+            echo "Application root directory does not exist."
+            mkdir $ROOT_PATH && echo "Root directory created"
+          else
+            echo "Application root directory exists."
+          fi
+
+      - name: Check App path
+        id: app-name
+        run: |
+
+          if [ -d "$APP_PATH" ]; then
+
+            if ! cd "$APP_PATH" ; then
+              echo "Can not access the path $APP_PATH"
+              exit 1
+            fi
+
+            if ! existing_origin=$(git config --get remote.origin.url) ; then
+              echo "Directory $APP_NAME exists, but it does not have git origin"
+              exit 1
+            fi
+
+
+            if [ "$REPO_URL" != "$existing_origin" ]; then
+              echo "Directory $APP_NAME exists, but it belongs to another repository"
+              echo "Existing directory origin - $existing_origin"
+              exit 1
+            fi
+
+            echo "app_dir_exist=true" >> $GITHUB_OUTPUT
+          else
+            echo "app_dir_exist=false" >> $GITHUB_OUTPUT
+
+          fi
+
+      - name: Get Current App version
+        if: steps.app-name.outputs.app_dir_exist == 'true'
+        id: current-version
+        run: |
+          cd "$APP_PATH" || exit 1
+
+          if ! current_version=$(git branch --show-current) ; then
+            echo "Failed to retrieve current version"
+            exit 1
+          fi
+
+          echo "Found App $APP_NAME in version $current_version"
+
+          echo "current_version=$current_version" >> $GITHUB_OUTPUT
+
+      - name: Stop App ${{ steps.current-version.outputs.current_version }}
+        if: steps.app-name.outputs.app_dir_exist == 'true'
+        run: |
+          cd "$APP_PATH" || exit 1
+
+          if ! docker compose down ; then
+            exit 1
+          fi
+
+      - name: Clone App repository
+        if: steps.app-name.outputs.app_dir_exist == 'false'
+        run: |
+          if ! git clone "$REPO_URL" "$APP_PATH" ; then
+            exit 1
+          fi
+
+      - name: Checkout version ${{ needs.Details.outputs.app_version }}
+        run: |
+          cd "$APP_PATH" || exit 1
+
+          if ! git checkout "$APP_VERSION" ; then
+            exit 1
+          fi
+
+      - name: Build App ${{ needs.Details.outputs.app_version }}
+        run: |
+          cd "$APP_PATH" || exit 1
+
+          if ! docker compose build ; then
+            echo "Failed to build $APP_NAME images"
+            exit 1
+          fi
+
+      - name: Start App ${{ needs.Details.outputs.app_version }}
+        run: |
+          cd "$APP_PATH" || exit 1
+
+          if ! docker compose up -d --force-recreate ; then
+            echo "Failed to start $APP_NAME containers"
+            docker compose down
+            exit 1
+          fi
+
+      - name: Check App Health status
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Set-Location -Path $env:APP_PATH
+
+          $TimeoutSeconds = [int]$env:HEALTHCHECK_TIMEOUT
+          $EndTime = $(Get-Date).AddSeconds($TimeoutSeconds)
+
+          while ($EndTime -gt $(Get-Date)) {
+              $DockerStatus = $(docker compose ps --format json) | ConvertFrom-Json
+              $NotHealthy = $DockerStatus | Where-Object {$_.Health -ne "healthy" -and $_.State -eq "running" }
+              $Unhealthy = $DockerStatus | Where-Object {$_.Health -eq "unhealthy"}
+              
+              if ($NotHealthy.Count -eq 0 ){
+                  Write-Host "All containers are healthy"
+                  exit 0
+              }
+
+              if ($Unhealthy.Count -gt 0){
+                  Write-Host "Unhealthy containers:"
+                  Write-Host $Unhealthy.Name
+                  exit 1
+              }
+
+              if (($DockerStatus | Where-Object {$_.Health -eq $null}).Count -eq $DockerStatus.Count){
+                Write-Host "No health checks configured"
+                exit 0
+              }
+
+              Start-Sleep -Seconds 5
+          }
+
+          Write-Host "Timeout"
+          exit 1
+
+      - name: Mark deployment as succeded
+        run: |
+          echo "# :white_check_mark: Deployment completed successfully :white_check_mark:" >> $GITHUB_STEP_SUMMARY
+
+      - name: Mark deployment as failed
+        if: failure()
+        run: |
+          echo "# :x: Deployment failed :x:" >> $GITHUB_STEP_SUMMARY
+
+      - name: Mark deployment as canceled
+        if: cancelled()
+        run: |
+          echo "# :no_entry_sign: Deployment canceled :no_entry_sign:" >> $GITHUB_STEP_SUMMARY
