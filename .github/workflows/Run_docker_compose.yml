@@ -121,7 +121,13 @@ jobs:
         run: |
           cd "$APP_PATH" || exit 1
 
+          if ! git fetch origin ; then
+            echo "Failed to fetch changes from origin"
+            exit 1
+          fi
+
           if ! git checkout "$APP_VERSION" ; then
+            echo "Failed to checkout to version $APP_VERSION"
             exit 1
           fi
 
