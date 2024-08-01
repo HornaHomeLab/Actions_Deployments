@@ -1,3 +1,5 @@
+name: Run docker compose
+
 on:
   workflow_call:
     inputs:
@@ -13,14 +15,14 @@ on:
 
 jobs:
   Runner:
-    uses: HornaHomeLab/depl_dev/.github/workflows/Check_runner.yml@main
+    uses: HornaHomeLab/Actions_Deployments/.github/workflows/Check_runner.yml@main
     with:
       environment: ${{ inputs.environment }}
     secrets:
       inherit
 
   Details:
-    uses: HornaHomeLab/depl_dev/.github/workflows/Check_deployment.yml@main
+    uses: HornaHomeLab/Actions_Deployments/.github/workflows/Check_deployment.yml@main
     with:
       environment: ${{ inputs.environment }}
       version: ${{ inputs.version }}

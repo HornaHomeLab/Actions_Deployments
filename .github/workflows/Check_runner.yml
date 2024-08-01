@@ -1,3 +1,5 @@
+name: Check runner
+
 on:
   workflow_call:
     inputs:
