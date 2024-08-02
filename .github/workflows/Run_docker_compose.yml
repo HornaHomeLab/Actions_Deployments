@@ -43,9 +43,8 @@ jobs:
         run: |
           echo "- Deployment to **${{ inputs.environment }}** environment" >> $GITHUB_STEP_SUMMARY
           echo "   - Started by **${{ github.actor }}**" >> $GITHUB_STEP_SUMMARY
-          echo "   - Executed on **${{ needs.Runner.outputs.label }}** environment" >> $GITHUB_STEP_SUMMARY
-          echo "   - HealthCheck timeout **$HEALTHCHECK_TIMEOUT** seconds" >> $GITHUB_STEP_SUMMARY
           echo "- Application **$APP_NAME**" >> $GITHUB_STEP_SUMMARY
+          echo "   - Version  **${{ needs.Get.outputs.app_version }}**" >> $GITHUB_STEP_SUMMARY
 
       - name: Create root directory
         run: |
@@ -116,7 +115,7 @@ jobs:
             exit 1
           fi
 
-      - name: Checkout version ${{ needs.Details.outputs.app_version }}
+      - name: Checkout version ${{ needs.Get.outputs.app_version }}
         run: |
           cd "$APP_PATH" || exit 1
 
