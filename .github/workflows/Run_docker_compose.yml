@@ -105,7 +105,7 @@ jobs:
           cd "$APP_PATH" || exit 1
 
           if ! docker compose down ; then
-            exit 1
+            echo "Can not stop existing app"
           fi
 
       - name: Clone App repository
