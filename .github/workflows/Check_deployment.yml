@@ -61,7 +61,7 @@ jobs:
               version="$APP_VERSION"
             else
               echo "Invalid version provided."
-              echo "Version $APP_VERSION does not exist"
+              echo "Version $APP_VERSION does not exist" >> $GITHUB_STEP_SUMMARY
               exit 1
             fi
 
@@ -79,7 +79,8 @@ jobs:
             if [ "$latest_release_tag_name" != "null" ]; then
               version="$latest_release_tag_name"
             else
-              echo "There is no Full Release available."
+              echo "There is no Release available."
+              echo "There is no Release available." >> $GITHUB_STEP_SUMMARY
               exit 1
             fi
             
